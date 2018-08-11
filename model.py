@@ -17,7 +17,7 @@ def resBlock(x, p1, p2, name, is_training):
 def dualenh(x_lum0, x_lum, is_training, L=32):
     xx  = tf.concat([x_lum0, x_lum], 3)
     res = tf.layers.conv2d(xx, 64, 3, padding='same', name='conv_start', activation=None)
-    res = tf.nn.relu(res, name='relu_start')
+    res = tf.nn.leaky_relu(res, alpha=0.2, name='lrelu_start')
     
     p1 = {"fs": 64, "fw":3}
 
@@ -32,22 +32,19 @@ def dualenh(x_lum0, x_lum, is_training, L=32):
 
     return y
 
-def singleenh(x_lum0, is_training):
+def singleenh(x_lum0, is_training, L=32):
     res = tf.layers.conv2d(x_lum0, 64, 3, padding='same', name='conv_start', activation=None)
-    res = tf.nn.relu(res, name='relu_start')
-    tmp = res
+    res = tf.nn.leaky_relu(res, alpha=0.2, name='relu_start')
 
     p1 = {"fs": 64, "fw":3}
 
-    for i in range(16):
+    for i in range(L):
         res = resBlock(res, p1, p1, 'resB%d' % (i+1), is_training)
     
     res = tf.layers.conv2d(res, 64, 3, padding='same', name='conv', activation=None)
     res = tf.layers.batch_normalization(res, training=is_training, name='BN')
 
-    y = tf.add(tmp, res)
-
-    y = tf.layers.conv2d(y, 1, 3, padding='same', name='conv_last', activation=None)
+    y = tf.layers.conv2d(res, 1, 3, padding='same', name='conv_last', activation=None)
     y = tf.nn.tanh(y, name='tanh_last')
 
     return y
@@ -66,11 +63,11 @@ class imdualenh(object):
         self.X_lum  = tf.placeholder(tf.float32, [None, None, None, self.parallax], name='X_LUM_RIGHT_PATCHES')
 
         self.is_training = tf.placeholder(tf.bool, name='is_training')
-        
+        L = 32
         if model == "dual":
-	    self.Y = dualenh(self.X_lum0, self.X_lum, self.is_training)
+	    self.Y = dualenh(self.X_lum0, self.X_lum, self.is_training, L)
 	elif model == "single":
-	    self.Y = singleenh(self.X_lum0, self.is_training)
+	    self.Y = singleenh(self.X_lum0, self.is_training, L)
 	else:
 	    print("Not recognized the model.")
             self.logfile.write("Not recognized the model.\n")
