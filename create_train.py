@@ -15,9 +15,10 @@ def generate_hdf5():
     PATCH_SIZE = 64
     STEPH = 0
     STEPW = PARALLAX
-    STRIDE = 64
+    STRIDE = 32
     SRCDIR = '../Data/dark_enh_mb2014/train/'
     INTERPOLATION = cv2.INTER_CUBIC
+    DATAAUG = 0
 
     fdatax  = sorted(glob.glob(SRCDIR + 'X_left/*.png'))
     fdatay  = sorted(glob.glob(SRCDIR + 'Y_left/*.png'))
@@ -44,10 +45,15 @@ def generate_hdf5():
             for x in range(0+STEPH, (im_h-PATCH_SIZE), STRIDE):
                 for y in range(0+STEPW, (im_w-PATCH_SIZE), STRIDE):
                     count += 1
-    numPatches = count
+    if DATAAUG == 1:
+        MODE = [0,1]
+        numPatches = count * 2
+    else:
+        MODE = [0]
+        numPatches = count
 
-    FDATA = DSTDIR + ('data_p%d_s%d_par%d_tr%d.hdf5' 
-                    % (PATCH_SIZE, STRIDE, PARALLAX, numPatches))
+    FDATA = DSTDIR + ('data_da%d_p%d_s%d_par%d_tr%d.hdf5' 
+                    % (DATAAUG, PATCH_SIZE, STRIDE, PARALLAX, numPatches))
 
     print("[*] Info ..")
     print("\t Number of train images = %d" % numPicsX)
@@ -91,7 +97,7 @@ def generate_hdf5():
             imgxr_rs_ycrcb = cv2.cvtColor(imgxr_rs, cv2.COLOR_BGR2YCR_CB)
 
             im_h, im_w, _ = imgxl_rs_ycrcb.shape
-            for mode in [0]: # data augmentation: [0,1]
+            for mode in MODE: # data augmentation: [0,1]
                 for x in range(0+STEPH, im_h-PATCH_SIZE, STRIDE):
                     for y in range(0+STEPW, im_w-PATCH_SIZE, STRIDE):
                         xx = np.zeros((1,PATCH_SIZE, PATCH_SIZE, PARALLAX+1))

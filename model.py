@@ -8,42 +8,29 @@ def resBlock(x, p1, p2, name, is_training):
     with tf.variable_scope(name):
         r = tf.layers.conv2d(x, p1["fs"], p1["fw"], padding='same', name=name+'_conv1', activation=None)
         r = tf.layers.batch_normalization(r, training=is_training, name=name+'_BN1')
-        #r = tf.nn.leaky_relu(r, alpha=0.2, name=name+'_lrelu')
-        r = tf.nn.relu(r, name=name+'_relu')
+        r = tf.nn.leaky_relu(r, alpha=0.2, name=name+'_lrelu')
         r = tf.layers.conv2d(r, p2["fs"], p2["fw"], padding='same', name=name+'_conv2', activation=None)
         r = tf.layers.batch_normalization(r, training=is_training, name=name+'_BN2')
         y = tf.add(r,x)
         return y
 
-def dualenh(x_lum0, x_lum, is_training):
+def dualenh(x_lum0, x_lum, is_training, L=32):
     xx  = tf.concat([x_lum0, x_lum], 3)
     res = tf.layers.conv2d(xx, 64, 3, padding='same', name='conv_start', activation=None)
     res = tf.nn.relu(res, name='relu_start')
-    tmp = res
     
     p1 = {"fs": 64, "fw":3}
 
-    for i in range(16):
+    for i in range(L):
         res = resBlock(res, p1, p1, 'resB%d' % (i+1), is_training)
     
     res = tf.layers.conv2d(res, 64, 3, padding='same', name='conv', activation=None)
     res = tf.layers.batch_normalization(res, training=is_training, name='BN')
     
-    y = tf.add(tmp, res)
-
-    y = tf.layers.conv2d(y, 1, 3, padding='same', name='conv_last', activation=None)
+    y = tf.layers.conv2d(res, 1, 3, padding='same', name='conv_last', activation=None)
     y = tf.nn.tanh(y, name='tanh_last')
 
     return y
-
-    #for i in range(15):
-    #    res = tf.layers.conv2d(res, 64, 3, padding='same', name='conv%d' % (i+1))
-    #    #res = tf.layers.batch_normalization(res, training=is_training, name='BN%d' %(i+1))
-    #    res = tf.nn.relu(res, name='ReLU%d' % (i+1))
-    #res = tf.layers.conv2d(res, 1, 3, padding='same', name='conv16', activation=None)
-    ##res = tf.layers.batch_normalization(res, training=is_training, name='BN16')
-    #hr_lum = tf.add(res, x_lum0)
-    #return hr_lum, res
 
 def singleenh(x_lum0, is_training):
     res = tf.layers.conv2d(x_lum0, 64, 3, padding='same', name='conv_start', activation=None)
@@ -65,18 +52,6 @@ def singleenh(x_lum0, is_training):
 
     return y
 
-    #res = tf.layers.conv2d(x_lum0, 64, 3, padding='same', name='conv1')
-    ##res = tf.layers.batch_normalization(res, training=is_training, name='BN1')
-    #res = tf.nn.relu(res, name='ReLU1')
-    #for i in range(14):
-    #    res = tf.layers.conv2d(res, 64, 3, padding='same', name='conv%d' % (i+2))
-    #    #res = tf.layers.batch_normalization(res, training=is_training, name='BN%d' %(i+2))
-    #    res = tf.nn.relu(res, name='ReLU%d' % (i+2))
-    #res = tf.layers.conv2d(res, 1, 3, padding='same', name='conv16', activation=None)
-    ##res = tf.layers.batch_normalization(res, training=is_training, name='BN16')
-    #hr_lum = tf.add(res, x_lum0)
-    #return hr_lum, res
-
 class imdualenh(object):
     def __init__(self, sess, batch_size=128, PARALLAX=64, model="dual", logfile="./logs/log.txt"):
         self.sess = sess
@@ -85,7 +60,6 @@ class imdualenh(object):
 
         # Labels
         self.Y_     = tf.placeholder(tf.float32, [None, None, None, 1], name='Y_GT_LUM')
-        #self.R_     = tf.placeholder(tf.float32, [None, None, None, 1], name='Y_GT_RES')
         
         # Inputs
         self.X_lum0 = tf.placeholder(tf.float32, [None, None, None, 1], name='X_LUM_LEFT')
@@ -94,23 +68,18 @@ class imdualenh(object):
         self.is_training = tf.placeholder(tf.bool, name='is_training')
         
         if model == "dual":
-	    #self.Y, self.R = dualenh(self.X_lum0, self.X_lum, self.is_training)
 	    self.Y = dualenh(self.X_lum0, self.X_lum, self.is_training)
 	elif model == "single":
-	    #self.Y, self.R = singleenh(self.X_lum0, self.is_training)
 	    self.Y = singleenh(self.X_lum0, self.is_training)
 	else:
 	    print("Not recognized the model.")
             self.logfile.write("Not recognized the model.\n")
 	    sys.exit(1)		
 
-        #tf.summary.image('Y_GT_RES'   , self.R_, 1)
-        #tf.summary.image('Y_HAT_RES'  , self.R , 1)
         tf.summary.image('Y_HAT_LUM'  , self.Y , 1)
         tf.summary.image('Y_GT_LUM'   , self.Y_, 1)
         tf.summary.image('X_LUM_LEFT' , self.X_lum0, 1)
         
-        #self.loss = (1.0 / batch_size) * tf.nn.l2_loss(self.R_ - self.R)
         self.loss = (1.0 / batch_size) * tf.nn.l2_loss(self.Y_ - self.Y)
         self.lr = tf.placeholder(tf.float32, name='learning_rate')
         self.eva_psnr = tf_psnr(self.Y, self.Y_)
@@ -146,10 +115,6 @@ class imdualenh(object):
             Y_GT = np.zeros((1,im_h,im_w-self.parallax,1))
             Y_GT[0,:,:,:] = np.expand_dims((test_data_YL[idx][:,self.parallax:,0].astype(np.float32) / 127.5) - 1, 3)
 
-            #R_lum = np.zeros((1,im_h,im_w-self.parallax,1))
-            #R_lum[0,:,:,0] = test_data_YL[idx][:,self.parallax:,0].astype(np.float32) / 255.0 -  \
-            #                 test_data_XL[idx][:,self.parallax:,0].astype(np.float32) / 255.0
-
             # run the model
             lum_hat_image, psnr_summary = self.sess.run(
                        [self.Y, summary_merged],
@@ -158,13 +123,6 @@ class imdualenh(object):
                                   self.Y_: Y_GT,
                                   self.is_training: False})
 
-            #lum_hat_image, res_hat_image, psnr_summary = self.sess.run(
-            #           [self.Y, self.R, summary_merged],
-            #           feed_dict={self.X_lum0: X_lum0,
-            #                      self.X_lum: X_lum,
-            #                      self.R_: R_lum,
-            #                      self.Y_: Y_GT,
-            #                      self.is_training: False})
             summary_writer.add_summary(psnr_summary, iter_num)
             groundtruth = test_data_YL[idx][:,self.parallax:,0].squeeze()
             input_image = test_data_XL[idx][:,self.parallax:,0].squeeze()
@@ -231,13 +189,10 @@ class imdualenh(object):
 
                 batch_Y = (data["Y_lum"][i_s:i_e, ...].astype(np.float32) / 127.5) - 1
                 batch_Y = np.expand_dims(batch_Y[:,:,:,0], 3)
-                #batch_R = np.expand_dims(data["Y_lum"][i_s:i_e, ..., 0].astype(np.float32) / 255.0 - \
-                #                         data["X_lum"][i_s:i_e, ..., 0].astype(np.float32) / 255.0,3)
 
                 _, loss, summary = self.sess.run([self.train_op, self.loss, merged],
                         feed_dict={self.X_lum: batch_X_lum,
                                    self.X_lum0: batch_X_lum0,
-                                   #self.R_: batch_R,
                                    self.Y_: batch_Y,
                                    self.lr: lr[epoch], self.is_training: True})
                 

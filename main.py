@@ -66,8 +66,8 @@ def main(_):
     os.environ["CUDA_VISIBLE_DEVICES"] = "%d" % args.gpuid
 
     lr = args.lr * np.ones([args.epoch])
-    lr[6:] = lr[0] / 10.0   ###!!!
-    lr[15:] = lr[6] / 10.0
+    lr[3:] = lr[0] / 10.0   ###!!!
+    lr[6:] = lr[0] / 100.0
     if args.use_gpu:
         # added to control the gpu memory
         print("GPU\n")
